@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, FieldValues, FieldArrayWithId } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { collection, addDoc } from 'firebase/firestore'
@@ -41,14 +41,12 @@ export default function CreateEvent() {
     },
   })
 
-  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({
-    control,
-    name: 'agenda' as const,
+  // @ts-ignore
+  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({control, name: 'agenda' as keyof EventFormData,
   })
 
-  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({
-    control,
-    name: 'customQuestions' as const,
+  // @ts-ignore
+  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({ control, name: 'customQuestions' as keyof EventFormData,
   })
 
   const onSubmit = async (data: EventFormData) => {

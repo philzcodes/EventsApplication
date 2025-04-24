@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
-import { useForm, useFieldArray } from 'react-hook-form'
+import { useForm, useFieldArray, FieldValues } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { toast } from 'react-toastify'
@@ -37,15 +37,11 @@ export default function EditEvent() {
     resolver: zodResolver(eventSchema),
   })
 
-  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({
-    control,
-    name: 'agenda' as const,
-  })
+  // @ts-ignore
+  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({control, name: 'agenda',})
 
-  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({
-    control,
-    name: 'customQuestions' as const,
-  })
+  // @ts-ignore
+  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({control,name: 'customQuestions',})
 
   useEffect(() => {
     const fetchEvent = async () => {
