@@ -7,6 +7,7 @@ import { doc, getDoc, collection, addDoc, query, where, getDocs } from 'firebase
 import { db } from '../config/firebase'
 import { toast } from 'react-toastify'
 import { format } from 'date-fns'
+import { sendEmail, emailTemplates } from '../services/emailService'
 
 interface Event {
   id: string
@@ -16,6 +17,7 @@ interface Event {
   endDate: string
   description: string
   location: string
+  hostId: string
 }
 
 interface CalendarService {
@@ -189,6 +191,33 @@ export default function Register() {
       console.log('Saving registration:', registrationData)
 
       await addDoc(collection(db, 'registrations'), registrationData)
+
+      // Send notification email to host
+      const hostDoc = await getDoc(doc(db, 'users', event.hostId))
+      if (hostDoc.exists()) {
+        const hostData = hostDoc.data()
+        await sendEmail(
+          {
+            to: hostData.email,
+            subject: `New Registration for ${event.title}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h1 style="color: #333;">New Registration</h1>
+                <p>Someone has registered for your event "${event.title}".</p>
+                <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                  <p><strong>Name:</strong> ${data.fullName}</p>
+                  <p><strong>Email:</strong> ${data.email}</p>
+                  <p><strong>Company:</strong> ${data.company}</p>
+                  <p><strong>Registered At:</strong> ${new Date().toLocaleString()}</p>
+                </div>
+                <p>You can view all registrations in your event dashboard.</p>
+              </div>
+            `,
+          },
+          event.hostId
+        )
+      }
+
       toast.success('Registration successful!')
       
       // Show calendar prompt

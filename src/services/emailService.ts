@@ -1,9 +1,13 @@
 import sgMail from '@sendgrid/mail'
+import emailjs from '@emailjs/browser'
 import { collection, addDoc, query, where, getDocs, Timestamp } from 'firebase/firestore'
 import { db } from '../config/firebase'
+import { emailConfig, EmailProvider } from '../config/emailConfig'
 
 // Initialize SendGrid
-sgMail.setApiKey(import.meta.env.VITE_SENDGRID_API_KEY)
+if (emailConfig.sendgridApiKey) {
+  sgMail.setApiKey(emailConfig.sendgridApiKey)
+}
 
 // Rate limiting configuration
 const RATE_LIMIT = {
@@ -67,6 +71,56 @@ const trackEmail = async (data: Omit<EmailTracking, 'id'>): Promise<string> => {
   return docRef.id
 }
 
+// Send email with SendGrid
+const sendWithSendGrid = async (data: EmailData): Promise<{ success: boolean; error?: any; trackingId?: string }> => {
+  try {
+    const response = await sgMail.send({
+      to: data.to,
+      from: data.from || import.meta.env.VITE_SENDGRID_FROM_EMAIL,
+      subject: data.subject,
+      text: data.text || '',
+      html: data.html || '',
+      trackingSettings: {
+        clickTracking: { enable: true },
+        openTracking: { enable: true },
+      },
+    })
+
+    return { success: true, trackingId: response[0].headers['x-message-id'] }
+  } catch (error) {
+    console.error('Error sending email with SendGrid:', error)
+    return { success: false, error }
+  }
+}
+
+// Send email with EmailJS
+const sendWithEmailJS = async (data: EmailData): Promise<{ success: boolean; error?: any; trackingId?: string }> => {
+  try {
+    if (!emailConfig.emailjsConfig) {
+      throw new Error('EmailJS configuration is missing')
+    }
+
+    const templateParams = {
+      to_email: Array.isArray(data.to) ? data.to[0] : data.to,
+      subject: data.subject,
+      message: data.html || data.text || '',
+      from_email: data.from || import.meta.env.VITE_SENDGRID_FROM_EMAIL,
+    }
+
+    const response = await emailjs.send(
+      emailConfig.emailjsConfig.serviceId,
+      emailConfig.emailjsConfig.templateId,
+      templateParams,
+      emailConfig.emailjsConfig.userId
+    )
+
+    return { success: true, trackingId: response.text }
+  } catch (error) {
+    console.error('Error sending email with EmailJS:', error)
+    return { success: false, error }
+  }
+}
+
 // Send email with tracking
 export const sendEmail = async (data: EmailData, userId: string): Promise<{ success: boolean; error?: any; trackingId?: string }> => {
   try {
@@ -84,29 +138,30 @@ export const sendEmail = async (data: EmailData, userId: string): Promise<{ succ
       throw new Error('Rate limit exceeded. Please try again later.')
     }
 
-    // Send email
-    const response = await sgMail.send({
-      to: data.to,
-      from: data.from || import.meta.env.VITE_SENDGRID_FROM_EMAIL,
-      subject: data.subject,
-      text: data.text || '',
-      html: data.html || '',
-      trackingSettings: {
-        clickTracking: { enable: true },
-        openTracking: { enable: true },
-      },
-    })
+    // Try primary provider first
+    let result = await (emailConfig.provider === 'sendgrid' ? sendWithSendGrid(data) : sendWithEmailJS(data))
 
-    // Track the email
-    const trackingId = await trackEmail({
-      emailId: response[0].headers['x-message-id'],
-      recipient: Array.isArray(data.to) ? data.to[0] : data.to,
-      status: 'sent',
-      timestamp: Timestamp.now(),
-      userId,
-    })
+    // If primary provider fails, try fallback
+    if (!result.success && emailConfig.provider === 'sendgrid') {
+      console.log('SendGrid failed, trying EmailJS...')
+      result = await sendWithEmailJS(data)
+    } else if (!result.success && emailConfig.provider === 'emailjs') {
+      console.log('EmailJS failed, trying SendGrid...')
+      result = await sendWithSendGrid(data)
+    }
 
-    return { success: true, trackingId }
+    if (result.success && result.trackingId) {
+      // Track the email
+      await trackEmail({
+        emailId: result.trackingId,
+        recipient: Array.isArray(data.to) ? data.to[0] : data.to,
+        status: 'sent',
+        timestamp: Timestamp.now(),
+        userId,
+      })
+    }
+
+    return result
   } catch (error) {
     console.error('Error sending email:', error)
     return { success: false, error }

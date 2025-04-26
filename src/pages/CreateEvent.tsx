@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useForm, useFieldArray, FieldValues, FieldArrayWithId } from 'react-hook-form'
+import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { collection, addDoc } from 'firebase/firestore'
@@ -9,6 +9,7 @@ import { db, storage } from '../config/firebase'
 import { useAuth } from '../hooks/useAuth'
 import { toast } from 'react-toastify'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
+import { themes, Theme } from '../config/themes'
 
 const eventSchema = z.object({
   title: z.string().min(1, 'Title is required'),
@@ -18,6 +19,7 @@ const eventSchema = z.object({
   location: z.string().min(1, 'Location is required'),
   agenda: z.array(z.string()).min(1, 'At least one agenda item is required'),
   customQuestions: z.array(z.string()),
+  theme: z.string().min(1, 'Theme is required'),
 })
 
 type EventFormData = z.infer<typeof eventSchema>
@@ -27,6 +29,7 @@ export default function CreateEvent() {
   const { user } = useAuth()
   const [coverImage, setCoverImage] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [selectedTheme, setSelectedTheme] = useState<Theme>(themes[0])
 
   const {
     register,
@@ -38,15 +41,16 @@ export default function CreateEvent() {
     defaultValues: {
       agenda: [''],
       customQuestions: [''],
+      theme: 'modern',
     },
   })
 
   // @ts-ignore
-  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({control, name: 'agenda' as keyof EventFormData,
+  const { fields: agendaFields, append: appendAgenda, remove: removeAgenda } = useFieldArray({control,name: 'agenda',
   })
 
   // @ts-ignore
-  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({ control, name: 'customQuestions' as keyof EventFormData,
+  const { fields: questionFields, append: appendQuestion, remove: removeQuestion } = useFieldArray({control,name: 'customQuestions',
   })
 
   const onSubmit = async (data: EventFormData) => {
@@ -163,6 +167,54 @@ export default function CreateEvent() {
             />
             {errors.location && (
               <p className="mt-1 text-sm text-red-600">{errors.location.message}</p>
+            )}
+          </div>
+
+          <div>
+            <label htmlFor="theme" className="form-label">
+              Event Theme
+            </label>
+            <div className="grid grid-cols-2 gap-4 mt-2">
+              {themes.map((theme) => (
+                <div
+                  key={theme.id}
+                  className={`relative rounded-lg border-2 p-4 cursor-pointer transition-all ${
+                    selectedTheme.id === theme.id
+                      ? 'border-primary-600 bg-primary-50'
+                      : 'border-gray-200 hover:border-primary-300'
+                  }`}
+                  onClick={() => {
+                    setSelectedTheme(theme)
+                    register('theme').onChange({ target: { value: theme.id } })
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-medium text-gray-900">{theme.name}</h3>
+                      <p className="text-sm text-gray-500">{theme.description}</p>
+                    </div>
+                    <div className="flex space-x-2">
+                      <div
+                        className="w-6 h-6 rounded-full"
+                        style={{ backgroundColor: theme.colors.primary }}
+                      />
+                      <div
+                        className="w-6 h-6 rounded-full"
+                        style={{ backgroundColor: theme.colors.secondary }}
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div
+                      className="h-2 rounded-full"
+                      style={{ backgroundColor: theme.colors.accent }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {errors.theme && (
+              <p className="mt-1 text-sm text-red-600">{errors.theme.message}</p>
             )}
           </div>
 

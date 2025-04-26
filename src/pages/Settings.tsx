@@ -1,17 +1,17 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../hooks/useAuth'
 import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
+import { useAuth } from '../hooks/useAuth'
 import { toast } from 'react-toastify'
+import { EmailProvider } from '../config/emailConfig'
 
-interface UserSettings {
-  fullName: string
-  email: string
-  company: string
-  phone: string
-  notifications: {
-    email: boolean
-    sms: boolean
+interface Settings {
+  emailProvider: EmailProvider
+  sendgridApiKey?: string
+  emailjsConfig?: {
+    serviceId: string
+    templateId: string
+    userId: string
   }
 }
 
@@ -19,84 +19,52 @@ export default function Settings() {
   const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [settings, setSettings] = useState<UserSettings>({
-    fullName: '',
-    email: '',
-    company: '',
-    phone: '',
-    notifications: {
-      email: true,
-      sms: false,
+  const [settings, setSettings] = useState<Settings>({
+    emailProvider: 'sendgrid',
+    emailjsConfig: {
+      serviceId: '',
+      templateId: '',
+      userId: '',
     },
   })
 
   useEffect(() => {
-    const fetchUserSettings = async () => {
+    const fetchSettings = async () => {
+      if (!user) return
+
       try {
-        if (user) {
-          const userDoc = await getDoc(doc(db, 'users', user.uid))
-          if (userDoc.exists()) {
-            const userData = userDoc.data()
-            setSettings({
-              fullName: userData.fullName || '',
-              email: userData.email || '',
-              company: userData.company || '',
-              phone: userData.phone || '',
-              notifications: {
-                email: userData.notifications?.email ?? true,
-                sms: userData.notifications?.sms ?? false,
-              },
-            })
-          }
+        const settingsDoc = await getDoc(doc(db, 'settings', user.uid))
+        if (settingsDoc.exists()) {
+          setSettings(settingsDoc.data() as Settings)
         }
       } catch (error) {
-        console.error('Error fetching user settings:', error)
+        console.error('Error fetching settings:', error)
+        toast.error('Failed to load settings')
       } finally {
         setLoading(false)
       }
     }
 
-    fetchUserSettings()
+    fetchSettings()
   }, [user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setSaving(true)
+    if (!user) return
 
+    setSaving(true)
     try {
-      if (user) {
-        await updateDoc(doc(db, 'users', user.uid), {
-          fullName: settings.fullName,
-          company: settings.company,
-          phone: settings.phone,
-          notifications: settings.notifications,
-        })
-        toast.success('Settings updated successfully!')
-      }
+      await updateDoc(doc(db, 'settings', user.uid), {
+        emailProvider: settings.emailProvider,
+        sendgridApiKey: settings.sendgridApiKey,
+        emailjsConfig: settings.emailjsConfig,
+      })
+      toast.success('Settings saved successfully')
     } catch (error) {
-      console.error('Error updating settings:', error)
-      toast.error('Failed to update settings. Please try again.')
+      console.error('Error saving settings:', error)
+      toast.error('Failed to save settings')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target
-    if (type === 'checkbox') {
-      const [parent, child] = name.split('.')
-      setSettings(prev => ({
-        ...prev,
-        [parent]: {
-          ...(prev[parent as keyof UserSettings] as Record<string, boolean>),
-          [child]: checked,
-        },
-      }))
-    } else {
-      setSettings(prev => ({
-        ...prev,
-        [name]: value,
-      }))
     }
   }
 
@@ -109,131 +77,120 @@ export default function Settings() {
   }
 
   return (
-    <div className="py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="md:flex md:items-center md:justify-between">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-              Settings
-            </h2>
-          </div>
-        </div>
-
-        <div className="mt-8">
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-4 py-5 sm:p-6">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">Profile Information</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Update your profile information and preferences.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                  <div>
-                    <label htmlFor="fullName" className="form-label">
-                      Full Name
-                    </label>
-                    <input
-                      type="text"
-                      id="fullName"
-                      name="fullName"
-                      value={settings.fullName}
-                      onChange={handleChange}
-                      className="input-field"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="email" className="form-label">
-                      Email
-                    </label>
-                    <input
-                      type="email"
-                      id="email"
-                      name="email"
-                      value={settings.email}
-                      disabled
-                      className="input-field bg-gray-50"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="company" className="form-label">
-                      Company
-                    </label>
-                    <input
-                      type="text"
-                      id="company"
-                      name="company"
-                      value={settings.company}
-                      onChange={handleChange}
-                      className="input-field"
-                    />
-                  </div>
-
-                  <div>
-                    <label htmlFor="phone" className="form-label">
-                      Phone Number
-                    </label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      value={settings.phone}
-                      onChange={handleChange}
-                      className="input-field"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-medium text-gray-900">Notification Preferences</h3>
-                  <div className="mt-4 space-y-4">
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="notifications.email"
-                        name="notifications.email"
-                        checked={settings.notifications.email}
-                        onChange={handleChange}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="notifications.email" className="ml-2 block text-sm text-gray-900">
-                        Email notifications
-                      </label>
-                    </div>
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="notifications.sms"
-                        name="notifications.sms"
-                        checked={settings.notifications.sms}
-                        onChange={handleChange}
-                        className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-                      />
-                      <label htmlFor="notifications.sms" className="ml-2 block text-sm text-gray-900">
-                        SMS notifications
-                      </label>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="btn-primary"
-                  >
-                    {saving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+    <div className="max-w-2xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+      <div className="md:flex md:items-center md:justify-between">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
+            Settings
+          </h2>
         </div>
       </div>
+
+      <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="space-y-6">
+            <div>
+              <label className="form-label">Email Provider</label>
+              <select
+                value={settings.emailProvider}
+                onChange={(e) => setSettings({ ...settings, emailProvider: e.target.value as EmailProvider })}
+                className="input-field"
+              >
+                <option value="sendgrid">SendGrid</option>
+                <option value="emailjs">EmailJS</option>
+              </select>
+            </div>
+
+            {settings.emailProvider === 'sendgrid' && (
+              <div>
+                <label className="form-label">SendGrid API Key</label>
+                <input
+                  type="password"
+                  value={settings.sendgridApiKey || ''}
+                  onChange={(e) => setSettings({ ...settings, sendgridApiKey: e.target.value })}
+                  className="input-field"
+                  placeholder="Enter your SendGrid API key"
+                />
+              </div>
+            )}
+
+            {settings.emailProvider === 'emailjs' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="form-label">Service ID</label>
+                  <input
+                    type="text"
+                    value={settings.emailjsConfig?.serviceId || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      emailjsConfig: {
+                        serviceId: e.target.value,
+                        templateId: settings.emailjsConfig?.templateId || '',
+                        userId: settings.emailjsConfig?.userId || '',
+                      },
+                    })}
+                    className="input-field"
+                    placeholder="Enter your EmailJS service ID"
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">Template ID</label>
+                  <input
+                    type="text"
+                    value={settings.emailjsConfig?.templateId || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      emailjsConfig: {
+                        serviceId: settings.emailjsConfig?.serviceId || '',
+                        templateId: e.target.value,
+                        userId: settings.emailjsConfig?.userId || '',
+                      },
+                    })}
+                    className="input-field"
+                    placeholder="Enter your EmailJS template ID"
+                  />
+                </div>
+
+                <div>
+                  <label className="form-label">User ID</label>
+                  <input
+                    type="text"
+                    value={settings.emailjsConfig?.userId || ''}
+                    onChange={(e) => setSettings({
+                      ...settings,
+                      emailjsConfig: {
+                        serviceId: settings.emailjsConfig?.serviceId || '',
+                        templateId: settings.emailjsConfig?.templateId || '',
+                        userId: e.target.value,
+                      },
+                    })}
+                    className="input-field"
+                    placeholder="Enter your EmailJS user ID"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button
+            type="submit"
+            disabled={saving}
+            className={`btn-primary ${saving ? 'opacity-75 cursor-not-allowed' : ''}`}
+          >
+            {saving ? (
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                Saving...
+              </div>
+            ) : (
+              'Save Settings'
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   )
 } 
