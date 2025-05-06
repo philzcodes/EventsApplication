@@ -1,18 +1,13 @@
 import { useState, useEffect } from 'react'
-import { doc, getDoc, updateDoc } from 'firebase/firestore'
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { useAuth } from '../hooks/useAuth'
 import { toast } from 'react-toastify'
-import { EmailProvider } from '../config/emailConfig'
 
 interface Settings {
-  emailProvider: EmailProvider
-  sendgridApiKey?: string
-  emailjsConfig?: {
-    serviceId: string
-    templateId: string
-    userId: string
-  }
+  emailjsPublicKey?: string
+  emailjsTemplateId?: string
+  emailjsServiceId?: string
 }
 
 export default function Settings() {
@@ -20,12 +15,9 @@ export default function Settings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<Settings>({
-    emailProvider: 'sendgrid',
-    emailjsConfig: {
-      serviceId: '',
-      templateId: '',
-      userId: '',
-    },
+    emailjsPublicKey: '',
+    emailjsTemplateId: '',
+    emailjsServiceId: '',
   })
 
   useEffect(() => {
@@ -54,11 +46,25 @@ export default function Settings() {
 
     setSaving(true)
     try {
-      await updateDoc(doc(db, 'settings', user.uid), {
-        emailProvider: settings.emailProvider,
-        sendgridApiKey: settings.sendgridApiKey,
-        emailjsConfig: settings.emailjsConfig,
-      })
+      const settingsRef = doc(db, 'settings', user.uid)
+      const settingsDoc = await getDoc(settingsRef)
+
+      if (settingsDoc.exists()) {
+        // Update existing document
+        await updateDoc(settingsRef, {
+          emailjsPublicKey: settings.emailjsPublicKey,
+          emailjsTemplateId: settings.emailjsTemplateId,
+          emailjsServiceId: settings.emailjsServiceId,
+        })
+      } else {
+        // Create new document
+        await setDoc(settingsRef, {
+          emailjsPublicKey: settings.emailjsPublicKey,
+          emailjsTemplateId: settings.emailjsTemplateId,
+          emailjsServiceId: settings.emailjsServiceId,
+        })
+      }
+      
       toast.success('Settings saved successfully')
     } catch (error) {
       console.error('Error saving settings:', error)
@@ -81,7 +87,7 @@ export default function Settings() {
       <div className="md:flex md:items-center md:justify-between">
         <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-            Settings
+            Email Settings
           </h2>
         </div>
       </div>
@@ -90,87 +96,77 @@ export default function Settings() {
         <div className="bg-white shadow rounded-lg p-6">
           <div className="space-y-6">
             <div>
-              <label className="form-label">Email Provider</label>
-              <select
-                value={settings.emailProvider}
-                onChange={(e) => setSettings({ ...settings, emailProvider: e.target.value as EmailProvider })}
+              <label className="form-label">EmailJS Public Key</label>
+              <input
+                type="password"
+                value={settings.emailjsPublicKey || ''}
+                onChange={(e) => setSettings({ ...settings, emailjsPublicKey: e.target.value })}
                 className="input-field"
-              >
-                <option value="sendgrid">SendGrid</option>
-                <option value="emailjs">EmailJS</option>
-              </select>
+                placeholder="Enter your EmailJS public key"
+              />
+              <p className="mt-2 text-sm text-gray-500">
+                Get your public key from{' '}
+                <a
+                  href="https://dashboard.emailjs.com/admin/account"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-primary-600 hover:text-primary-500"
+                >
+                  EmailJS Dashboard
+                </a>
+              </p>
             </div>
 
-            {settings.emailProvider === 'sendgrid' && (
-              <div>
-                <label className="form-label">SendGrid API Key</label>
-                <input
-                  type="password"
-                  value={settings.sendgridApiKey || ''}
-                  onChange={(e) => setSettings({ ...settings, sendgridApiKey: e.target.value })}
-                  className="input-field"
-                  placeholder="Enter your SendGrid API key"
-                />
-              </div>
-            )}
+            <div>
+              <label className="form-label">EmailJS Service ID</label>
+              <input
+                type="text"
+                value={settings.emailjsServiceId || ''}
+                onChange={(e) => setSettings({ ...settings, emailjsServiceId: e.target.value })}
+                className="input-field"
+                placeholder="Enter your EmailJS service ID"
+              />
+              <p className="mt-2 text-sm text-gray-500">
+                This is the ID of your email service in EmailJS
+              </p>
+            </div>
 
-            {settings.emailProvider === 'emailjs' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="form-label">Service ID</label>
-                  <input
-                    type="text"
-                    value={settings.emailjsConfig?.serviceId || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      emailjsConfig: {
-                        serviceId: e.target.value,
-                        templateId: settings.emailjsConfig?.templateId || '',
-                        userId: settings.emailjsConfig?.userId || '',
-                      },
-                    })}
-                    className="input-field"
-                    placeholder="Enter your EmailJS service ID"
-                  />
-                </div>
+            <div>
+              <label className="form-label">EmailJS Template ID</label>
+              <input
+                type="text"
+                value={settings.emailjsTemplateId || ''}
+                onChange={(e) => setSettings({ ...settings, emailjsTemplateId: e.target.value })}
+                className="input-field"
+                placeholder="Enter your EmailJS template ID"
+              />
+              <p className="mt-2 text-sm text-gray-500">
+                This is the ID of your email template in EmailJS
+              </p>
+            </div>
 
-                <div>
-                  <label className="form-label">Template ID</label>
-                  <input
-                    type="text"
-                    value={settings.emailjsConfig?.templateId || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      emailjsConfig: {
-                        serviceId: settings.emailjsConfig?.serviceId || '',
-                        templateId: e.target.value,
-                        userId: settings.emailjsConfig?.userId || '',
-                      },
-                    })}
-                    className="input-field"
-                    placeholder="Enter your EmailJS template ID"
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">User ID</label>
-                  <input
-                    type="text"
-                    value={settings.emailjsConfig?.userId || ''}
-                    onChange={(e) => setSettings({
-                      ...settings,
-                      emailjsConfig: {
-                        serviceId: settings.emailjsConfig?.serviceId || '',
-                        templateId: settings.emailjsConfig?.templateId || '',
-                        userId: e.target.value,
-                      },
-                    })}
-                    className="input-field"
-                    placeholder="Enter your EmailJS user ID"
-                  />
-                </div>
-              </div>
-            )}
+            <div className="bg-gray-50 p-4 rounded-md">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Template Variables</h3>
+              <p className="text-sm text-gray-500 mb-2">
+                Make sure your EmailJS template includes these variables:
+              </p>
+              <ul className="list-disc list-inside text-sm text-gray-500 space-y-1">
+                <li>to_email - Recipient's email address</li>
+                <li>subject - Email subject</li>
+                <li>message - Email content</li>
+                <li>name - Recipient's name (for welcome emails)</li>
+                <li>event_title - Event title</li>
+                <li>start_date - Event start date</li>
+                <li>start_time - Event start time</li>
+                <li>end_time - Event end time</li>
+                <li>location - Event location</li>
+                <li>changes - Event changes (for update emails)</li>
+                <li>reason - Cancellation reason (for cancellation emails)</li>
+                <li>survey_link - Survey link (for survey emails)</li>
+                <li>certificate_link - Certificate link (for certificate emails)</li>
+                <li>attendee_name - Attendee's name (for certificate emails)</li>
+              </ul>
+            </div>
           </div>
         </div>
 

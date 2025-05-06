@@ -17,6 +17,11 @@ const eventSchema = z.object({
   agenda: z.array(z.string()).min(1, 'At least one agenda item is required'),
   customQuestions: z.array(z.string()),
   price: z.number().optional(),
+  notificationPreferences: z.object({
+    enabled: z.boolean().default(false),
+    interval: z.number().min(1).optional(),
+    recipients: z.array(z.string()),
+  }).default({ enabled: false, recipients: [] }),
 })
 
 type EventFormData = z.infer<typeof eventSchema>
@@ -33,6 +38,7 @@ export default function EditEvent() {
     control,
     formState: { errors },
     setValue,
+    watch,
   } = useForm<EventFormData>({
     resolver: zodResolver(eventSchema),
   })
@@ -57,6 +63,9 @@ export default function EditEvent() {
           setValue('agenda', eventData.agenda || [''])
           setValue('customQuestions', eventData.customQuestions || [''])
           setValue('price', eventData.price)
+          setValue('notificationPreferences.enabled', eventData.notificationPreferences?.enabled || false)
+          setValue('notificationPreferences.interval', eventData.notificationPreferences?.interval || 1)
+          setValue('notificationPreferences.recipients', eventData.notificationPreferences?.recipients || [''])
         }
       } catch (error) {
         console.error('Error fetching event:', error)
@@ -268,6 +277,87 @@ export default function EditEvent() {
                     Add Custom Question
                   </button>
                 </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="notificationEnabled"
+                    {...register('notificationPreferences.enabled')}
+                    className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  />
+                  <label htmlFor="notificationEnabled" className="text-sm font-medium text-gray-700">
+                    Enable registration notifications
+                  </label>
+                </div>
+
+                {watch('notificationPreferences.enabled') && (
+                  <>
+                    <div>
+                      <label htmlFor="notificationInterval" className="form-label">
+                        Notify after every N registrations
+                      </label>
+                      <input
+                        type="number"
+                        id="notificationInterval"
+                        min="1"
+                        {...register('notificationPreferences.interval', { valueAsNumber: true })}
+                        className="input-field"
+                        placeholder="e.g. 3"
+                      />
+                      {errors.notificationPreferences?.interval && (
+                        <p className="mt-1 text-sm text-red-600">
+                          {errors.notificationPreferences.interval.message}
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="form-label">Notification Recipients</label>
+                      <div className="space-y-2">
+                        {watch('notificationPreferences.recipients')?.map((_, index) => (
+                          <div key={index} className="flex items-center space-x-2">
+                            <input
+                              type="email"
+                              {...register(`notificationPreferences.recipients.${index}`)}
+                              className="input-field flex-1"
+                              placeholder="Enter email address"
+                            />
+                            {index > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const currentRecipients = watch('notificationPreferences.recipients') || []
+                                  const newRecipients = [...currentRecipients]
+                                  newRecipients.splice(index, 1)
+                                  setValue('notificationPreferences.recipients', newRecipients)
+                                }}
+                                className="p-2 text-red-600 hover:text-red-700"
+                              >
+                                <TrashIcon className="h-5 w-5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentRecipients = watch('notificationPreferences.recipients') || []
+                            setValue('notificationPreferences.recipients', [...currentRecipients, ''])
+                          }}
+                          className="flex items-center text-primary-600 hover:text-primary-700"
+                        >
+                          <PlusIcon className="h-5 w-5 mr-1" />
+                          Add Recipient
+                        </button>
+                      </div>
+                      <p className="mt-2 text-sm text-gray-500">
+                        Add email addresses that should receive registration notifications
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

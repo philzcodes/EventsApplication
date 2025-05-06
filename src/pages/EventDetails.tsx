@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { doc, getDoc, collection, query, where, getDocs, addDoc } from 'firebase/firestore'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { doc, getDoc, collection, query, where, getDocs, addDoc, deleteDoc } from 'firebase/firestore'
 import { db } from '../config/firebase'
 import { format } from 'date-fns'
 import {
@@ -25,6 +25,10 @@ interface Event {
   agenda: string[]
   customQuestions: string[]
   hostId: string
+  notificationPreferences?: {
+    enabled: boolean
+    interval: number
+  }
 }
 
 interface Registration {
@@ -39,6 +43,7 @@ interface Registration {
 export default function EventDetails() {
   const { user } = useAuth()
   const { eventId } = useParams()
+  const navigate = useNavigate()
   const [event, setEvent] = useState<Event | null>(null)
   const [registrations, setRegistrations] = useState<Registration[]>([])
   const [loading, setLoading] = useState(true)
@@ -46,6 +51,8 @@ export default function EventDetails() {
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [emailStats, setEmailStats] = useState<any>(null)
+  const [deletingEvent, setDeletingEvent] = useState(false)
+  const [deletingRegistration, setDeletingRegistration] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchEventAndRegistrations = async () => {
@@ -99,10 +106,10 @@ export default function EventDetails() {
         {
           to: registrations.map(r => r.email),
           subject: emailSubject,
-          html: emailTemplates.update({
+          templateParams: emailTemplates.update({
             title: event!.title,
             changes: [emailBody],
-          }).html,
+          }).templateParams,
         },
         user.uid
       )
@@ -122,6 +129,59 @@ export default function EventDetails() {
       toast.error('Failed to send emails')
     } finally {
       setSendingEmail(false)
+    }
+  }
+
+  const handleDeleteEvent = async () => {
+    if (!event || !user || user.uid !== event.hostId) return
+
+    if (!window.confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingEvent(true)
+    try {
+      // Delete all registrations for this event
+      const registrationsQuery = query(
+        collection(db, 'registrations'),
+        where('eventId', '==', event.id)
+      )
+      const registrationsSnapshot = await getDocs(registrationsQuery)
+      
+      // Delete each registration
+      const deletePromises = registrationsSnapshot.docs.map(doc => deleteDoc(doc.ref))
+      await Promise.all(deletePromises)
+
+      // Delete the event
+      await deleteDoc(doc(db, 'events', event.id))
+      
+      toast.success('Event deleted successfully')
+      navigate('/dashboard')
+    } catch (error) {
+      console.error('Error deleting event:', error)
+      toast.error('Failed to delete event')
+    } finally {
+      setDeletingEvent(false)
+    }
+  }
+
+  const handleDeleteRegistration = async (registrationId: string) => {
+    if (!event || !user || user.uid !== event.hostId) return
+
+    if (!window.confirm('Are you sure you want to remove this participant?')) {
+      return
+    }
+
+    setDeletingRegistration(registrationId)
+    try {
+      await deleteDoc(doc(db, 'registrations', registrationId))
+      setRegistrations(prev => prev.filter(reg => reg.id !== registrationId))
+      toast.success('Participant removed successfully')
+    } catch (error) {
+      console.error('Error removing participant:', error)
+      toast.error('Failed to remove participant')
+    } finally {
+      setDeletingRegistration(null)
     }
   }
 
@@ -167,10 +227,21 @@ export default function EventDetails() {
             </Link>
             <button
               type="button"
+              onClick={handleDeleteEvent}
+              disabled={deletingEvent}
               className="ml-3 btn-primary bg-red-600 hover:bg-red-700"
             >
-              <TrashIcon className="h-5 w-5 mr-2" />
-              Delete Event
+              {deletingEvent ? (
+                <div className="flex items-center">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                  Deleting...
+                </div>
+              ) : (
+                <>
+                  <TrashIcon className="h-5 w-5 mr-2" />
+                  Delete Event
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -363,6 +434,11 @@ export default function EventDetails() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Notifications
                       </th>
+                      {user?.uid === event.hostId && (
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Actions
+                        </th>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -391,6 +467,27 @@ export default function EventDetails() {
                             </span>
                           )}
                         </td>
+                        {user?.uid === event.hostId && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <button
+                              onClick={() => handleDeleteRegistration(registration.id)}
+                              disabled={deletingRegistration === registration.id}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              {deletingRegistration === registration.id ? (
+                                <div className="flex items-center">
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600 mr-2"></div>
+                                  Removing...
+                                </div>
+                              ) : (
+                                <div className="flex items-center">
+                                  <TrashIcon className="h-5 w-5 mr-1" />
+                                  Remove
+                                </div>
+                              )}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

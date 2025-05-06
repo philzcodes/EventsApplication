@@ -18,6 +18,11 @@ interface Event {
   description: string
   location: string
   hostId: string
+  notificationPreferences?: {
+    enabled: boolean
+    interval: number
+    recipients?: string[]
+  }
 }
 
 interface CalendarService {
@@ -162,102 +167,81 @@ export default function Register() {
   }
 
   const onSubmit = async (data: RegistrationFormData) => {
-    console.log('Form submitted with data:', data)
+    if (!event) return
     setSubmitting(true)
+
     try {
-      if (!event) {
-        throw new Error('Event not found')
-      }
-
-      // Check for existing registration
-      const existingRegistrationQuery = query(
-        collection(db, 'registrations'),
-        where('eventId', '==', event.id),
-        where('email', '==', data.email)
-      )
-      const existingRegistration = await getDocs(existingRegistrationQuery)
-
-      if (!existingRegistration.empty) {
-        toast.error('You have already registered for this event with this email address')
-        setSubmitting(false)
-        return
-      }
-
+      // Add registration
       const registrationData = {
         ...data,
         eventId: event.id,
         registeredAt: new Date().toISOString(),
       }
-      console.log('Saving registration:', registrationData)
+      const registrationRef = await addDoc(collection(db, 'registrations'), registrationData)
 
-      await addDoc(collection(db, 'registrations'), registrationData)
+      // Get total registrations for this event
+      const registrationsQuery = query(
+        collection(db, 'registrations'),
+        where('eventId', '==', event.id)
+      )
+      const registrationsSnapshot = await getDocs(registrationsQuery)
+      const totalRegistrations = registrationsSnapshot.size
 
-      // Send notification email to host
-      const hostDoc = await getDoc(doc(db, 'users', event.hostId))
-      if (hostDoc.exists()) {
-        const hostData = hostDoc.data()
-        await sendEmail(
-          {
-            to: hostData.email,
-            subject: `New Registration for ${event.title}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h1 style="color: #333;">New Registration</h1>
-                <p>Someone has registered for your event "${event.title}".</p>
-                <div style="background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                  <p><strong>Name:</strong> ${data.fullName}</p>
-                  <p><strong>Email:</strong> ${data.email}</p>
-                  <p><strong>Company:</strong> ${data.company}</p>
-                  <p><strong>Registered At:</strong> ${new Date().toLocaleString()}</p>
-                </div>
-                <p>You can view all registrations in your event dashboard.</p>
-              </div>
-            `,
-          },
-          event.hostId
-        )
+      // Check if we should notify the host
+      if (event.notificationPreferences?.enabled && event.notificationPreferences?.interval) {
+        if (totalRegistrations % event.notificationPreferences.interval === 0) {
+          // Get host's email
+         // const hostDoc = await getDoc(doc(db, 'users', event.hostId))
+          //if (hostDoc.exists()) {
+            //const hostData = hostDoc.data()
+            //const hostEmail = hostData.email
+
+            // Send notification email to all recipients
+            const notificationRecipients = [
+              //hostEmail,
+              ...(event.notificationPreferences?.recipients || [])
+            ].filter((email, index, self) => self.indexOf(email) === index) // Remove duplicates
+
+            if (notificationRecipients.length > 0) {
+              try{
+              await sendEmail({
+                to: notificationRecipients,
+                subject: `New Registration: ${event.title}`,
+                templateParams: {
+                  to_email: notificationRecipients.join(', '),
+                  name: 'Event Host',
+                  subject: `New Registration: ${event.title}`,
+                  message: `A new participant has registered for your event "${event.title}".`,
+                  event_title: event.title,
+                  start_date: format(new Date(event.startDate), 'MMMM d, yyyy'),
+                  start_time: format(new Date(event.startDate), 'h:mm a'),
+                  end_time: format(new Date(event.endDate), 'h:mm a'),
+                  location: event.location,
+                  change: `Registration Details:\nName: ${data.fullName}\nEmail: ${data.email}\nCompany: ${data.company}\nTotal Registrations: ${totalRegistrations}`
+                }
+              }, event.hostId)
+            }
+            catch(error){
+              console.error('Error sending notification email:', error)
+            }
+            }
+          //}
+        }
       }
+
+      // Send confirmation email to registrant
+      const { subject, templateParams } = emailTemplates.welcome(data.fullName, event.title)
+      await sendEmail({
+        to: data.email,
+        subject,
+        templateParams
+      }, event.hostId)
 
       toast.success('Registration successful!')
-      
-      // Show calendar prompt
-      const shouldAddToCalendar = window.confirm('Would you like to add this event to your calendar?')
-      if (shouldAddToCalendar) {
-        // Show calendar service options
-        const serviceOptions = calendarServices.map(service => 
-          `<div class="calendar-service-option">
-            <img src="${service.icon}" alt="${service.name}" class="w-6 h-6 mr-2" />
-            <span>${service.name}</span>
-          </div>`
-        ).join('')
-        
-        const dialog = document.createElement('div')
-        dialog.innerHTML = `
-          <div class="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center">
-            <div class="bg-white rounded-lg p-6 max-w-sm w-full">
-              <h3 class="text-lg font-medium text-gray-900 mb-4">Choose Calendar Service</h3>
-              <div class="space-y-2">
-                ${serviceOptions}
-              </div>
-            </div>
-          </div>
-        `
-        document.body.appendChild(dialog)
-        
-        // Add click handlers
-        const options = dialog.querySelectorAll('.calendar-service-option')
-        options.forEach((option, index) => {
-          option.addEventListener('click', () => {
-            addToCalendar(calendarServices[index])
-            document.body.removeChild(dialog)
-          })
-        })
-      }
-      
-      navigate(`/e/${eventSlug}`)
+      navigate(`/event/${event.id}/confirmation`)
     } catch (error) {
       console.error('Error registering:', error)
-      toast.error('Registration failed. Please try again.')
+      toast.error('Failed to register. Please try again.')
     } finally {
       setSubmitting(false)
     }
