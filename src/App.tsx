@@ -20,6 +20,7 @@ import Signup from './pages/Signup'
 import NotFound from './pages/NotFound'
 import Events from './pages/Events'
 import EditEvent from './pages/EditEvent'
+import EventConfirmation from './pages/EventConfirmation'
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
           <Route path="dashboard/events/:eventId/edit" element={<EditEvent />} />
           <Route path="dashboard/attendees" element={<Attendees />} />
           <Route path="dashboard/settings" element={<Settings />} />
+          <Route path="/event/:eventId/confirmation" element={<EventConfirmation />} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
